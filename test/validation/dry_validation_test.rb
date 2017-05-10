@@ -6,17 +6,19 @@ require "reform/form/coercion"
 #---
 # one "nested" Schema per form.
 class DryValidationErrorsAPITest < Minitest::Spec
-  Album  = Struct.new(:title, :artist, :songs)
+  Album  = Struct.new(:title, :artist, :songs, :country_codes)
   Song   = Struct.new(:title)
   Artist = Struct.new(:email, :label)
   Label  = Struct.new(:location)
 
   class AlbumForm < TestForm
     property :title
+    collection :country_codes
 
     validation do
       # required(:title).filled
       required(:title).filled(min_size?: 2)
+      required(:country_codes) { each(included_in?: ['US', 'BY']) }
     end
 
     property :artist do
@@ -53,7 +55,7 @@ class DryValidationErrorsAPITest < Minitest::Spec
   let (:form) { AlbumForm.new(Album.new(nil, Artist.new(nil, Label.new), [Song.new(nil), Song.new(nil)])) }
 
   it "everything wrong" do
-    result = form.({ title: nil, artist: { email: "" }, songs: [{ title: "Clams have feelings too" }, { title: "" }] })
+    result = form.({ title: nil, artist: { email: "" }, country_codes: ['RU'], songs: [{ title: "Clams have feelings too" }, { title: "" }] })
 
     result.success?.must_equal false
 
@@ -65,6 +67,7 @@ class DryValidationErrorsAPITest < Minitest::Spec
     form.songs[1].errors.messages.must_equal({:title=>["must be filled"]})
 
     # #errors[]
+    form.errors[:country_codes].must_equal ["must be one of: US, BY"]
     form.errors[:nonsense].must_be_nil
     form.errors[:title].must_equal ["must be filled", "size cannot be less than 2"]
     form.artist.errors[:email].must_equal ["must be filled"]
@@ -94,7 +97,7 @@ class DryValidationErrorsAPITest < Minitest::Spec
   end
 
   it "only nested property is invalid." do
-    result = form.({ title: "Black Star", artist: { email: "" } })
+    result = form.({ title: "Black Star", country_codes: ['US'], artist: { email: "" } })
 
     result.success?.must_equal false
 
@@ -105,7 +108,7 @@ class DryValidationErrorsAPITest < Minitest::Spec
   end
 
   it "nested collection invalid" do
-    result = form.({ title: "Black Star", artist: { email: "uhm", label: { location: "Hannover" } }, songs: [ { title: "" } ] })
+    result = form.({ title: "Black Star", country_codes: ['US'], artist: { email: "uhm", label: { location: "Hannover" } }, songs: [ { title: "" } ] })
 
     result.success?.must_equal false
     form.errors.messages.must_equal({:"songs.title"=>["must be filled"]})
